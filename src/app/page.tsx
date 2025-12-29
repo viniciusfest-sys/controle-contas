@@ -13,11 +13,14 @@ import {
   X,
   Clock,
   AlertCircle,
-  MoreVertical
+  MoreVertical,
+  Download
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, isSameMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -155,6 +158,177 @@ export default function ControleFacil() {
   const totalContas = contasMesAtual.length;
   const totalValor = contasMesAtual.reduce((sum, c) => sum + c.valor, 0);
 
+  // Calcular totais gerais
+  const totalGeral = {
+    pagas: {
+      quantidade: contasPagas.length,
+      valor: resumo.totalPago
+    },
+    pendentes: {
+      quantidade: contasPendentes.length,
+      valor: resumo.totalAPagar
+    },
+    vencidas: {
+      quantidade: contasVencidas.length,
+      valor: resumo.totalVencido
+    },
+    total: {
+      quantidade: totalContas,
+      valor: totalValor
+    }
+  };
+
+  // Função para exportar PDF
+  const exportarPDF = async () => {
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    let yPosition = 20;
+
+    // Título
+    pdf.setFontSize(20);
+    pdf.setTextColor(98, 0, 238);
+    pdf.text('Relatório de Contas', pageWidth / 2, yPosition, { align: 'center' });
+    
+    yPosition += 10;
+    pdf.setFontSize(12);
+    pdf.setTextColor(100, 100, 100);
+    pdf.text(format(mesAtual, 'MMMM yyyy', { locale: ptBR }).toUpperCase(), pageWidth / 2, yPosition, { align: 'center' });
+    
+    yPosition += 15;
+
+    // Resumo Total
+    pdf.setFontSize(14);
+    pdf.setTextColor(0, 0, 0);
+    pdf.text('Resumo Geral', 15, yPosition);
+    yPosition += 8;
+
+    // Card Total
+    pdf.setFillColor(59, 130, 246);
+    pdf.roundedRect(15, yPosition, pageWidth - 30, 15, 3, 3, 'F');
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFontSize(11);
+    pdf.text('TOTAL GERAL', 20, yPosition + 6);
+    pdf.setFontSize(12);
+    pdf.text(`${totalGeral.total.quantidade} contas`, 20, yPosition + 11);
+    pdf.text(formatarMoeda(totalGeral.total.valor), pageWidth - 20, yPosition + 8.5, { align: 'right' });
+    yPosition += 20;
+
+    // Card Pagas
+    pdf.setFillColor(16, 185, 129);
+    pdf.roundedRect(15, yPosition, pageWidth - 30, 15, 3, 3, 'F');
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFontSize(11);
+    pdf.text('PAGAS', 20, yPosition + 6);
+    pdf.setFontSize(12);
+    pdf.text(`${totalGeral.pagas.quantidade} contas`, 20, yPosition + 11);
+    pdf.text(formatarMoeda(totalGeral.pagas.valor), pageWidth - 20, yPosition + 8.5, { align: 'right' });
+    yPosition += 20;
+
+    // Card Pendentes
+    pdf.setFillColor(59, 130, 246);
+    pdf.roundedRect(15, yPosition, pageWidth - 30, 15, 3, 3, 'F');
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFontSize(11);
+    pdf.text('PENDENTES', 20, yPosition + 6);
+    pdf.setFontSize(12);
+    pdf.text(`${totalGeral.pendentes.quantidade} contas`, 20, yPosition + 11);
+    pdf.text(formatarMoeda(totalGeral.pendentes.valor), pageWidth - 20, yPosition + 8.5, { align: 'right' });
+    yPosition += 20;
+
+    // Card Vencidas
+    pdf.setFillColor(239, 68, 68);
+    pdf.roundedRect(15, yPosition, pageWidth - 30, 15, 3, 3, 'F');
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFontSize(11);
+    pdf.text('VENCIDAS', 20, yPosition + 6);
+    pdf.setFontSize(12);
+    pdf.text(`${totalGeral.vencidas.quantidade} contas`, 20, yPosition + 11);
+    pdf.text(formatarMoeda(totalGeral.vencidas.valor), pageWidth - 20, yPosition + 8.5, { align: 'right' });
+    yPosition += 25;
+
+    // Lista de Contas
+    pdf.setFontSize(14);
+    pdf.setTextColor(0, 0, 0);
+    pdf.text('Detalhamento das Contas', 15, yPosition);
+    yPosition += 10;
+
+    const contasOrdenadas = [...contasMesAtual].sort((a, b) => 
+      a.dataVencimento.getTime() - b.dataVencimento.getTime()
+    );
+
+    for (const conta of contasOrdenadas) {
+      if (yPosition > pageHeight - 30) {
+        pdf.addPage();
+        yPosition = 20;
+      }
+
+      // Determinar cor da borda
+      let borderColor: [number, number, number] = [59, 130, 246]; // azul padrão
+      if (conta.status === 'atrasado') borderColor = [239, 68, 68]; // vermelho
+      else if (conta.status === 'vence-hoje') borderColor = [245, 158, 11]; // amarelo
+      else if (conta.pago) borderColor = [16, 185, 129]; // verde
+
+      // Card da conta com borda colorida
+      pdf.setDrawColor(...borderColor);
+      pdf.setLineWidth(1);
+      pdf.setFillColor(255, 255, 255);
+      pdf.roundedRect(15, yPosition, pageWidth - 30, 18, 2, 2, 'FD');
+
+      // Barra lateral colorida
+      pdf.setFillColor(...borderColor);
+      pdf.rect(15, yPosition, 3, 18, 'F');
+
+      // Conteúdo
+      pdf.setTextColor(0, 0, 0);
+      pdf.setFontSize(10);
+      pdf.text(format(conta.dataVencimento, 'dd/MM/yyyy'), 22, yPosition + 6);
+      
+      pdf.setFontSize(11);
+      pdf.text(conta.descricao, 22, yPosition + 11);
+      
+      pdf.setFontSize(9);
+      pdf.setTextColor(100, 100, 100);
+      pdf.text(conta.categoria.toUpperCase(), 22, yPosition + 15);
+
+      // Status badge
+      pdf.setFontSize(8);
+      if (conta.pago) {
+        pdf.setFillColor(220, 252, 231);
+        pdf.setTextColor(22, 163, 74);
+        pdf.roundedRect(pageWidth - 70, yPosition + 3, 20, 5, 1, 1, 'F');
+        pdf.text('PAGO', pageWidth - 60, yPosition + 6.5, { align: 'center' });
+      } else if (conta.status === 'atrasado') {
+        pdf.setFillColor(254, 226, 226);
+        pdf.setTextColor(220, 38, 38);
+        pdf.roundedRect(pageWidth - 70, yPosition + 3, 25, 5, 1, 1, 'F');
+        pdf.text('VENCIDO', pageWidth - 57.5, yPosition + 6.5, { align: 'center' });
+      } else if (conta.status === 'vence-hoje') {
+        pdf.setFillColor(254, 243, 199);
+        pdf.setTextColor(217, 119, 6);
+        pdf.roundedRect(pageWidth - 70, yPosition + 3, 20, 5, 1, 1, 'F');
+        pdf.text('HOJE', pageWidth - 60, yPosition + 6.5, { align: 'center' });
+      }
+
+      // Valor
+      pdf.setFontSize(11);
+      pdf.setTextColor(0, 0, 0);
+      pdf.text(formatarMoeda(conta.valor), pageWidth - 20, yPosition + 12, { align: 'right' });
+
+      yPosition += 22;
+    }
+
+    // Rodapé
+    const dataGeracao = format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
+    pdf.setFontSize(8);
+    pdf.setTextColor(150, 150, 150);
+    pdf.text(`Gerado em ${dataGeracao}`, pageWidth / 2, pageHeight - 10, { align: 'center' });
+
+    // Salvar PDF
+    const nomeArquivo = `contas-${format(mesAtual, 'MM-yyyy')}.pdf`;
+    pdf.save(nomeArquivo);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       {/* Header */}
@@ -263,6 +437,27 @@ export default function ControleFacil() {
 
             {/* Cards de Status */}
             <div className="space-y-3">
+              {/* Total Geral */}
+              <Card className="shadow-sm hover:shadow-md transition-shadow border-l-4 border-blue-500">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                        <BarChart3 className="w-5 h-5 text-blue-600" />
+                      </div>
+                      <span className="font-medium text-gray-900">Total Geral</span>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-lg font-bold text-gray-900">
+                        {modoVisualizacao === 'quantidade' 
+                          ? `${totalGeral.total.quantidade} contas`
+                          : formatarMoeda(totalGeral.total.valor)}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
               {/* Pagas */}
               <Card className="shadow-sm hover:shadow-md transition-shadow">
                 <CardContent className="p-4">
@@ -331,9 +526,48 @@ export default function ControleFacil() {
 
         {telaAtiva === 'lista' && (
           <div className="space-y-3">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">
-              Contas do Mês ({contasMesAtual.length})
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-gray-900">
+                Contas do Mês ({contasMesAtual.length})
+              </h2>
+              <Button
+                onClick={exportarPDF}
+                className="bg-[#6200EE] hover:bg-[#5000CC] flex items-center gap-2"
+                disabled={contasMesAtual.length === 0}
+              >
+                <Download className="w-4 h-4" />
+                Exportar PDF
+              </Button>
+            </div>
+
+            {/* Card de Totais */}
+            <Card className="shadow-md border-l-4 border-[#6200EE] mb-4">
+              <CardContent className="p-4">
+                <h3 className="font-semibold text-gray-900 mb-3">Resumo do Mês</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-blue-50 p-3 rounded-lg">
+                    <p className="text-xs text-gray-600 mb-1">Total Geral</p>
+                    <p className="text-sm font-bold text-blue-600">{totalGeral.total.quantidade} contas</p>
+                    <p className="text-xs font-semibold text-blue-700">{formatarMoeda(totalGeral.total.valor)}</p>
+                  </div>
+                  <div className="bg-green-50 p-3 rounded-lg">
+                    <p className="text-xs text-gray-600 mb-1">Pagas</p>
+                    <p className="text-sm font-bold text-green-600">{totalGeral.pagas.quantidade} contas</p>
+                    <p className="text-xs font-semibold text-green-700">{formatarMoeda(totalGeral.pagas.valor)}</p>
+                  </div>
+                  <div className="bg-blue-50 p-3 rounded-lg">
+                    <p className="text-xs text-gray-600 mb-1">Pendentes</p>
+                    <p className="text-sm font-bold text-blue-600">{totalGeral.pendentes.quantidade} contas</p>
+                    <p className="text-xs font-semibold text-blue-700">{formatarMoeda(totalGeral.pendentes.valor)}</p>
+                  </div>
+                  <div className="bg-red-50 p-3 rounded-lg">
+                    <p className="text-xs text-gray-600 mb-1">Vencidas</p>
+                    <p className="text-sm font-bold text-red-600">{totalGeral.vencidas.quantidade} contas</p>
+                    <p className="text-xs font-semibold text-red-700">{formatarMoeda(totalGeral.vencidas.valor)}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
             
             {contasMesAtual.length === 0 ? (
               <Card className="shadow-sm">
@@ -441,7 +675,17 @@ export default function ControleFacil() {
 
         {telaAtiva === 'relatorios' && (
           <div className="space-y-4">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Relatórios</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-gray-900">Relatórios</h2>
+              <Button
+                onClick={exportarPDF}
+                className="bg-[#6200EE] hover:bg-[#5000CC] flex items-center gap-2"
+                disabled={contasMesAtual.length === 0}
+              >
+                <Download className="w-4 h-4" />
+                Exportar PDF
+              </Button>
+            </div>
             
             <Card className="shadow-sm">
               <CardContent className="p-6">
@@ -450,6 +694,10 @@ export default function ControleFacil() {
                   <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
                     <span className="text-gray-700">Total de Contas</span>
                     <span className="font-bold text-blue-600">{contasMesAtual.length}</span>
+                  </div>
+                  <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
+                    <span className="text-gray-700">Valor Total</span>
+                    <span className="font-bold text-blue-600">{formatarMoeda(totalValor)}</span>
                   </div>
                   <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
                     <span className="text-gray-700">Total Pago</span>
