@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   Plus, 
   Home,
@@ -13,13 +13,11 @@ import {
   X,
   Clock,
   AlertCircle,
-  Download
+  MoreVertical
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, isSameMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -50,8 +48,6 @@ export default function ControleFacil() {
   const [mesAtual, setMesAtual] = useState(new Date());
   const [modoVisualizacao, setModoVisualizacao] = useState<ModoVisualizacao>('moeda');
   const [dialogAberto, setDialogAberto] = useState(false);
-  const [exportando, setExportando] = useState(false);
-  const relatorioRef = useRef<HTMLDivElement>(null);
 
   // Form state
   const [descricao, setDescricao] = useState('');
@@ -145,16 +141,6 @@ export default function ControleFacil() {
   const contasMesAtual = contas.filter(c => isSameMonth(c.dataVencimento, mesAtual));
   const resumo = calcularResumoFinanceiro(contasMesAtual);
 
-  // Calcular totais gerais (todas as contas)
-  const totalGeralContas = contas.length;
-  const totalGeralValor = contas.reduce((sum, c) => sum + c.valor, 0);
-  const totalGeralPagas = contas.filter(c => c.pago).length;
-  const totalGeralPendentes = contas.filter(c => !c.pago && c.status === 'em-dia').length;
-  const totalGeralVencidas = contas.filter(c => c.status === 'atrasado').length;
-  const totalGeralValorPago = contas.filter(c => c.pago).reduce((sum, c) => sum + c.valor, 0);
-  const totalGeralValorPendente = contas.filter(c => !c.pago && c.status === 'em-dia').reduce((sum, c) => sum + c.valor, 0);
-  const totalGeralValorVencido = contas.filter(c => c.status === 'atrasado').reduce((sum, c) => sum + c.valor, 0);
-
   // Dados para o gráfico
   const contasPagas = contasMesAtual.filter(c => c.pago);
   const contasPendentes = contasMesAtual.filter(c => !c.pago && c.status === 'em-dia');
@@ -168,38 +154,6 @@ export default function ControleFacil() {
 
   const totalContas = contasMesAtual.length;
   const totalValor = contasMesAtual.reduce((sum, c) => sum + c.valor, 0);
-
-  // Função para exportar PDF
-  const exportarPDF = async () => {
-    if (!relatorioRef.current) return;
-    
-    setExportando(true);
-    
-    try {
-      const canvas = await html2canvas(relatorioRef.current, {
-        scale: 2,
-        backgroundColor: '#ffffff',
-        logging: false
-      });
-      
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
-      const imgWidth = canvas.width;
-      const imgHeight = canvas.height;
-      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
-      const imgX = (pdfWidth - imgWidth * ratio) / 2;
-      const imgY = 10;
-      
-      pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
-      pdf.save(`relatorio-contas-${format(mesAtual, 'MM-yyyy')}.pdf`);
-    } catch (error) {
-      console.error('Erro ao exportar PDF:', error);
-    } finally {
-      setExportando(false);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
@@ -377,7 +331,7 @@ export default function ControleFacil() {
 
         {telaAtiva === 'lista' && (
           <div className="space-y-3">
-            <h2 className="text-xl font-bold text-gray-900 mb-3">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">
               Contas do Mês ({contasMesAtual.length})
             </h2>
             
@@ -396,74 +350,86 @@ export default function ControleFacil() {
                   .map(conta => (
                     <Card 
                       key={conta.id} 
-                      className={`shadow-sm hover:shadow-md transition-all ${
-                        conta.status === 'atrasado' ? 'border-l-4 border-red-500' :
-                        conta.status === 'vence-hoje' ? 'border-l-4 border-yellow-500' :
-                        conta.pago ? 'border-l-4 border-green-500' :
-                        'border-l-4 border-blue-500'
+                      className={`shadow-sm hover:shadow-md transition-all border-l-4 ${
+                        conta.status === 'atrasado' ? 'border-red-500' :
+                        conta.status === 'vence-hoje' ? 'border-yellow-500' :
+                        conta.pago ? 'border-green-500' :
+                        'border-blue-500'
                       }`}
                     >
                       <CardContent className="p-3">
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <CalendarIcon className="w-3.5 h-3.5 text-gray-400" />
-                              <span className="text-xs text-gray-600">
-                                {format(conta.dataVencimento, 'dd/MM/yyyy')}
-                              </span>
-                              {conta.pago && (
-                                <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
-                                  Pago
-                                </span>
-                              )}
-                              {conta.status === 'atrasado' && !conta.pago && (
-                                <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
-                                  Vencido
-                                </span>
-                              )}
-                            </div>
-                            <h3 className="font-semibold text-gray-900 text-sm mb-0.5">
+                        <div className="flex items-center justify-between gap-3">
+                          {/* Ícone de Calendário e Data */}
+                          <div className="flex items-center gap-2 min-w-[80px]">
+                            <CalendarIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                            <span className="text-xs text-gray-600 font-medium">
+                              {format(conta.dataVencimento, 'dd/MM/yy')}
+                            </span>
+                          </div>
+
+                          {/* Descrição e Categoria */}
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-semibold text-sm text-gray-900 truncate">
                               {conta.descricao}
                             </h3>
-                            <p className="text-xs text-gray-500 capitalize">
+                            <p className="text-xs text-gray-500 capitalize truncate">
                               {conta.categoria}
                             </p>
                           </div>
-                          <div className="text-right ml-3">
-                            <p className="text-base font-bold text-gray-900">
+
+                          {/* Status Badge */}
+                          <div className="flex items-center gap-2">
+                            {conta.pago && (
+                              <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">
+                                Pago
+                              </span>
+                            )}
+                            {conta.status === 'atrasado' && !conta.pago && (
+                              <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">
+                                Vencido
+                              </span>
+                            )}
+                            {conta.status === 'vence-hoje' && !conta.pago && (
+                              <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">
+                                Hoje
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Valor */}
+                          <div className="text-right min-w-[80px]">
+                            <p className="text-sm font-bold text-gray-900">
                               {formatarMoeda(conta.valor)}
                             </p>
                           </div>
-                        </div>
-                        
-                        <div className="flex gap-2 mt-2">
-                          {!conta.pago ? (
-                            <Button
-                              size="sm"
-                              className="flex-1 bg-green-600 hover:bg-green-700 h-8 text-xs"
-                              onClick={() => marcarComoPago(conta.id)}
+
+                          {/* Menu de Ações */}
+                          <div className="flex items-center gap-1">
+                            {!conta.pago ? (
+                              <button
+                                onClick={() => marcarComoPago(conta.id)}
+                                className="p-1.5 hover:bg-green-50 rounded-full transition-colors"
+                                title="Marcar como pago"
+                              >
+                                <Check className="w-4 h-4 text-green-600" />
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => desmarcarPagamento(conta.id)}
+                                className="p-1.5 hover:bg-gray-100 rounded-full transition-colors"
+                                title="Desfazer pagamento"
+                              >
+                                <X className="w-4 h-4 text-gray-600" />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => excluirConta(conta.id)}
+                              className="p-1.5 hover:bg-red-50 rounded-full transition-colors"
+                              title="Excluir conta"
                             >
-                              <Check className="w-3.5 h-3.5 mr-1" />
-                              Pagar
-                            </Button>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="flex-1 h-8 text-xs"
-                              onClick={() => desmarcarPagamento(conta.id)}
-                            >
-                              Desfazer
-                            </Button>
-                          )}
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            className="h-8 px-3"
-                            onClick={() => excluirConta(conta.id)}
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </Button>
+                              <X className="w-4 h-4 text-red-600" />
+                            </button>
+                          </div>
                         </div>
                       </CardContent>
                     </Card>
@@ -475,142 +441,31 @@ export default function ControleFacil() {
 
         {telaAtiva === 'relatorios' && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-gray-900">Relatórios</h2>
-              <Button
-                onClick={exportarPDF}
-                disabled={exportando}
-                className="bg-[#6200EE] hover:bg-[#5000CC]"
-              >
-                <Download className="w-4 h-4 mr-2" />
-                {exportando ? 'Exportando...' : 'Exportar PDF'}
-              </Button>
-            </div>
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Relatórios</h2>
             
-            <div ref={relatorioRef} className="space-y-4 bg-white p-6 rounded-lg">
-              {/* Cabeçalho do Relatório */}
-              <div className="text-center mb-6 pb-4 border-b-2 border-[#6200EE]">
-                <h1 className="text-2xl font-bold text-[#6200EE] mb-2">
-                  Relatório de Contas
-                </h1>
-                <p className="text-gray-600 capitalize">
-                  {format(mesAtual, 'MMMM yyyy', { locale: ptBR })}
-                </p>
-              </div>
-
-              {/* Resumo do Mês Atual */}
-              <Card className="shadow-sm border-2 border-[#6200EE]">
-                <CardContent className="p-6">
-                  <h3 className="font-bold text-[#6200EE] mb-4 text-lg">Resumo do Mês Atual</h3>
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg border-l-4 border-blue-500">
-                      <span className="text-gray-700 font-medium">Total de Contas</span>
-                      <span className="font-bold text-blue-600">{contasMesAtual.length}</span>
-                    </div>
-                    <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg border-l-4 border-green-500">
-                      <span className="text-gray-700 font-medium">Total Pago</span>
-                      <span className="font-bold text-green-600">{formatarMoeda(resumo.totalPago)}</span>
-                    </div>
-                    <div className="flex justify-between items-center p-3 bg-yellow-50 rounded-lg border-l-4 border-yellow-500">
-                      <span className="text-gray-700 font-medium">Total Pendente</span>
-                      <span className="font-bold text-yellow-600">{formatarMoeda(resumo.totalAPagar)}</span>
-                    </div>
-                    <div className="flex justify-between items-center p-3 bg-red-50 rounded-lg border-l-4 border-red-500">
-                      <span className="text-gray-700 font-medium">Total Vencido</span>
-                      <span className="font-bold text-red-600">{formatarMoeda(resumo.totalVencido)}</span>
-                    </div>
+            <Card className="shadow-sm">
+              <CardContent className="p-6">
+                <h3 className="font-semibold text-gray-900 mb-4">Resumo do Mês</h3>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
+                    <span className="text-gray-700">Total de Contas</span>
+                    <span className="font-bold text-blue-600">{contasMesAtual.length}</span>
                   </div>
-                </CardContent>
-              </Card>
-
-              {/* Total Geral (Todas as Contas) */}
-              <Card className="shadow-sm border-2 border-purple-500">
-                <CardContent className="p-6">
-                  <h3 className="font-bold text-purple-600 mb-4 text-lg">Total Geral (Todas as Contas)</h3>
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center p-3 bg-purple-50 rounded-lg border-l-4 border-purple-500">
-                      <span className="text-gray-700 font-medium">Total de Contas</span>
-                      <span className="font-bold text-purple-600">{totalGeralContas}</span>
-                    </div>
-                    <div className="flex justify-between items-center p-3 bg-purple-50 rounded-lg border-l-4 border-purple-500">
-                      <span className="text-gray-700 font-medium">Valor Total</span>
-                      <span className="font-bold text-purple-600">{formatarMoeda(totalGeralValor)}</span>
-                    </div>
-                    <div className="grid grid-cols-3 gap-3 mt-4">
-                      <div className="text-center p-3 bg-green-50 rounded-lg border-2 border-green-500">
-                        <div className="text-2xl font-bold text-green-600">{totalGeralPagas}</div>
-                        <div className="text-xs text-gray-600 mt-1">Pagas</div>
-                        <div className="text-sm font-semibold text-green-600 mt-1">
-                          {formatarMoeda(totalGeralValorPago)}
-                        </div>
-                      </div>
-                      <div className="text-center p-3 bg-blue-50 rounded-lg border-2 border-blue-500">
-                        <div className="text-2xl font-bold text-blue-600">{totalGeralPendentes}</div>
-                        <div className="text-xs text-gray-600 mt-1">Pendentes</div>
-                        <div className="text-sm font-semibold text-blue-600 mt-1">
-                          {formatarMoeda(totalGeralValorPendente)}
-                        </div>
-                      </div>
-                      <div className="text-center p-3 bg-red-50 rounded-lg border-2 border-red-500">
-                        <div className="text-2xl font-bold text-red-600">{totalGeralVencidas}</div>
-                        <div className="text-xs text-gray-600 mt-1">Vencidas</div>
-                        <div className="text-sm font-semibold text-red-600 mt-1">
-                          {formatarMoeda(totalGeralValorVencido)}
-                        </div>
-                      </div>
-                    </div>
+                  <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
+                    <span className="text-gray-700">Total Pago</span>
+                    <span className="font-bold text-green-600">{formatarMoeda(resumo.totalPago)}</span>
                   </div>
-                </CardContent>
-              </Card>
-
-              {/* Lista de Contas do Mês */}
-              {contasMesAtual.length > 0 && (
-                <Card className="shadow-sm">
-                  <CardContent className="p-6">
-                    <h3 className="font-bold text-gray-900 mb-4 text-lg">Detalhamento das Contas</h3>
-                    <div className="space-y-2">
-                      {contasMesAtual
-                        .sort((a, b) => a.dataVencimento.getTime() - b.dataVencimento.getTime())
-                        .map((conta, index) => (
-                          <div 
-                            key={conta.id}
-                            className={`p-3 rounded-lg border-l-4 ${
-                              conta.pago ? 'bg-green-50 border-green-500' :
-                              conta.status === 'atrasado' ? 'bg-red-50 border-red-500' :
-                              'bg-blue-50 border-blue-500'
-                            }`}
-                          >
-                            <div className="flex justify-between items-start">
-                              <div className="flex-1">
-                                <div className="font-semibold text-gray-900">{conta.descricao}</div>
-                                <div className="text-sm text-gray-600 capitalize">{conta.categoria}</div>
-                                <div className="text-xs text-gray-500 mt-1">
-                                  Vencimento: {format(conta.dataVencimento, 'dd/MM/yyyy')}
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <div className="font-bold text-gray-900">{formatarMoeda(conta.valor)}</div>
-                                <div className={`text-xs mt-1 px-2 py-1 rounded-full inline-block ${
-                                  conta.pago ? 'bg-green-200 text-green-800' :
-                                  conta.status === 'atrasado' ? 'bg-red-200 text-red-800' :
-                                  'bg-blue-200 text-blue-800'
-                                }`}>
-                                  {conta.pago ? 'Pago' : conta.status === 'atrasado' ? 'Vencido' : 'Pendente'}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Rodapé do Relatório */}
-              <div className="text-center text-sm text-gray-500 mt-6 pt-4 border-t">
-                <p>Relatório gerado em {format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}</p>
-              </div>
-            </div>
+                  <div className="flex justify-between items-center p-3 bg-yellow-50 rounded-lg">
+                    <span className="text-gray-700">Total Pendente</span>
+                    <span className="font-bold text-yellow-600">{formatarMoeda(resumo.totalAPagar)}</span>
+                  </div>
+                  <div className="flex justify-between items-center p-3 bg-red-50 rounded-lg">
+                    <span className="text-gray-700">Total Vencido</span>
+                    <span className="font-bold text-red-600">{formatarMoeda(resumo.totalVencido)}</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         )}
       </main>

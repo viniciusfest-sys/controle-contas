@@ -1,7 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  devIndicators: false, // Remove widget de desenvolvimento Next.js
+  devIndicators: {
+    appIsrStatus: false,
+    buildActivity: false,
+  },
   
   // Ignorar erros durante build (compatibilidade Vercel)
   eslint: {

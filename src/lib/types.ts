@@ -1,6 +1,14 @@
-export type ContaCategoria = 'fornecedores' | 'energia' | 'aluguel' | 'impostos' | 'insumos' | 'outros';
+// Tipos para o aplicativo Controle Fácil
 
 export type ContaStatus = 'em-dia' | 'vence-hoje' | 'atrasado' | 'pago';
+
+export type ContaCategoria = 
+  | 'fornecedores' 
+  | 'energia' 
+  | 'aluguel' 
+  | 'impostos' 
+  | 'insumos'
+  | 'outros';
 
 export interface Conta {
   id: string;
@@ -8,18 +16,20 @@ export interface Conta {
   valor: number;
   categoria: ContaCategoria;
   dataVencimento: Date;
-  dataPagamento?: Date;
   observacoes?: string;
   pago: boolean;
+  dataPagamento?: Date;
   status: ContaStatus;
 }
 
 export interface ResumoFinanceiro {
-  totalContas: number;
-  totalPago: number;
   totalAPagar: number;
+  totalPago: number;
   totalVencido: number;
-  contasPagas: number;
-  contasPendentes: number;
-  contasVencidas: number;
+  contasVencendoHoje: number;
+}
+
+export interface DadosGrafico {
+  categoria: string;
+  valor: number;
 }
